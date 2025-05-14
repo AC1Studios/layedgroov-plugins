@@ -13,8 +13,8 @@
         "DEFAULT_PREFIX": "!"
     },
     "INTERACTIONS": {
-        "SLASH": false,
-        "CONTEXT": false
+        "SLASH": true,
+        "CONTEXT": true
     },
     "SUPPORT_SERVER": "https://discord.gg/abc123",
     "ENABLED_PLUGINS": []
