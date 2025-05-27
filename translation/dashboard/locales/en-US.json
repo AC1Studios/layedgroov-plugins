@@ -1,8 +1,0 @@
-{
-    "TITLE": "Translation",
-    "DESCRIPTION": "Manage translation settings",
-
-    "SETTINGS": "Settings",
-    "FLAG_TR": "Flag Translation",
-    "FLAG_TR_DESC": "Enable or disable translation using flag emoji"
-}
