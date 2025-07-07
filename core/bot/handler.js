@@ -10,8 +10,9 @@ const OWNER_IDS = process.env.OWNER_IDS?.split(",").map((id) => id.trim());
  * @param {string} prefix
  */
 async function handlePrefixCommand(message, cmd, prefix) {
-    const args = message.content.slice(prefix.length).trim().split(/ +/g);
+    const args = message.content.replace(prefix, "").split(/\s+/);
     const invoke = args.shift().toLowerCase();
+
     const data = {};
     data.prefix = prefix;
     data.invoke = invoke;
@@ -153,8 +154,8 @@ async function handleSlashCommand(interaction, cmd) {
         context.interaction = interaction;
         await cmd.interactionRun(context);
     } catch (ex) {
-        await interaction.followUpT("core:HANDLER.ERROR");
         interaction.client.logger.error("interactionRun", ex);
+        await interaction.followUpT("core:HANDLER.ERROR");
     } finally {
         if (cmd.cooldown > 0) applyCooldown("cmd", interaction.user.id, cmd);
     }
