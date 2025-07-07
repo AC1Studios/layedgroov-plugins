@@ -143,7 +143,7 @@ async function getHelpMenu({ client, guild }) {
 
     // Buttons Row
     let components = [];
-    components.push(
+    const buttonsRow = new ActionRowBuilder().addComponents([
         new ButtonBuilder()
             .setCustomId("previousBtn")
             .setEmoji("⬅️")
@@ -154,18 +154,26 @@ async function getHelpMenu({ client, guild }) {
             .setEmoji("➡️")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
-    );
-
+        new ButtonBuilder()
+            .setCustomId("homeBtn")
+            .setLabel("Home")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(true)
+    ]);
     let buttonsRow = new ActionRowBuilder().addComponents(components);
     const config = await client.pluginManager.getPlugin("core").getConfig();
     const embed = EmbedUtils.embed()
         .setThumbnail(client.user.displayAvatarURL())
+        .setImage("https://media.discordapp.net/attachments/925107435822272522/1095401318044139600/layedgroov_banner.png")
         .setDescription(
-            "**About Me:**\n" +
-                `Hello I am ${guild.members.me.displayName}!\n` +
-                "A cool multipurpose discord bot which can serve all your needs\n\n" +
-                `**Invite Me:** [Here](${client.getInvite()})\n` +
-                `**Support Server:** [Join](${config["SUPPORT_SERVER"]})`,
+            `Hello I am ${guild.members.me.displayName}!\n` +
+            `- **__Select a category from the dropdown menu below!__**\n` +
+            `- **__Use the Arrows to go to the next page!__**\n` +
+            `- **__Select the Home button to go back to this page__**\n` +
+            `- **__For more details on any command, use ${usedPrefix}help <command>.__**\n` +
+            `- **__For any further help join our support server [Join](${config["SUPPORT_SERVER"]})__**!\n` +
+            `**Invite Me:** [Here](${client.getInvite()})\n` +
+            `**Enable plugins here:** [Dashboard](https://layedgroov.up.railway.app/dashboard)`
         );
 
     return {
@@ -267,19 +275,23 @@ const pluginWaiter = async (arg0, pluginName, prefix, disabledCmds) => {
     let buttonsRow = [];
 
     if (arrEmbeds.length > 1) {
-        buttonsRow = new ActionRowBuilder().addComponents([
-            new ButtonBuilder()
-                .setCustomId("previousBtn")
-                .setEmoji("⬅️")
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(false),
-            new ButtonBuilder()
-                .setCustomId("nextBtn")
-                .setEmoji("➡️")
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(false),
-        ]);
-    }
+           const buttonsRow = new ActionRowBuilder().addComponents([
+                    new ButtonBuilder()
+                        .setCustomId("previousBtn")
+                        .setEmoji("⬅️")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(arrEmbeds.length <= 1),
+                    new ButtonBuilder()
+                        .setCustomId("nextBtn")
+                        .setEmoji("➡️")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(arrEmbeds.length <= 1),
+                    new ButtonBuilder()
+                        .setCustomId("homeBtn")
+                        .setLabel("Home")
+                        .setStyle(ButtonStyle.Primary)
+                        .setDisabled(false)
+                ]);
 
     const reply = {
         embeds: [arrEmbeds[currentPage]],
