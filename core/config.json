@@ -17,5 +17,5 @@
         "CONTEXT": true
     },
     "SUPPORT_SERVER": "https://discord.gg/aCjCnmDg7h",
-    "ENABLED_PLUGINS": []
+    "ENABLED_PLUGINS": ["react"]
 }
