@@ -46,7 +46,7 @@ module.exports = {
  * @param {string} newPrefix
  */
 async function setNewPrefix(guild, newPrefix) {
-    if (newPrefix.length > 2) return guild.getT("core:PREFIX.TOO_LONG");
+    if (newPrefix.length > 4) return guild.getT("core:PREFIX.TOO_LONG");
 
     const settings = await db.getSettings(guild);
     settings.prefix = newPrefix;
