@@ -14,32 +14,53 @@ module.exports = async (message) => {
 
     if (!config["PREFIX_COMMANDS"]["ENABLED"]) return;
 
-    // Check for bot mentions
+    // check for bot mentions
     if (message.content.includes(`${guild.client.user.id}`)) {
         message.channel.send(`> My prefix is \`${settings.prefix}\``);
     }
 
-    // Case-insensitive prefix check + optional space handling
-    const prefixRegex = new RegExp(`^${settings.prefix}\\s*`, "i"); // "i" flag = case-insensitive
-    const prefixMatch = message.content.match(prefixRegex);
+    if (message.content && message.content.toLowerCase().startsWith(settings.prefix.toLowerCase())) {
+        const rawBody = message.content.slice(settings.prefix.length).trim();
+        const normalizedBody = rawBody.toLowerCase().replace(/\s+/g, " ");
+        const parts = normalizedBody.split(" ");
 
-    if (prefixMatch) {
-        // Extract the command and arguments
-        const commandAndArgs = message.content.slice(prefixMatch[0].length).trim();
-        const invoke = commandAndArgs.split(/\s+/)[0]?.toLowerCase();
+        let cmd = null;
+        let invoke = "";
 
-        if (invoke) {
-            const cmd = guild.client.commandManager.findPrefixCommand(invoke);
-            if (cmd) {
-                // Check if the plugin is disabled
-                if (!settings.enabled_plugins.includes(cmd.plugin.name)) return;
-
-                // Check if the command is disabled
-                if (settings.disabled_prefix.includes(cmd.name)) return;
-
-                message.isCommand = true;
-                handlePrefixCommand(message, cmd, settings.prefix);
+        // First try space-separated form (e.g., "lay help")
+        for (let i = parts.length; i > 0; i--) {
+            const tryInvoke = parts.slice(0, i).join(" ");
+            const found = guild.client.commandManager.findPrefixCommand(tryInvoke);
+            if (found) {
+                cmd = found;
+                invoke = tryInvoke;
+                break;
             }
         }
+
+        // If that failed, try no-space form (e.g., "layhelp")
+        if (!cmd) {
+            const noSpaceInvoke = parts.join("");
+            const found = guild.client.commandManager.findPrefixCommand(noSpaceInvoke);
+            if (found) {
+                cmd = found;
+                invoke = noSpaceInvoke;
+            }
+        }
+
+        if (cmd) {
+            // Check if plugin is enabled
+            if (!settings.enabled_plugins.includes(cmd.plugin.name)) return;
+            if (settings.disabled_prefix.includes(cmd.name)) return;
+
+            message.isCommand = true;
+
+            const invokeParts = invoke.split(" ").length;
+            const args = parts.slice(invokeParts);
+
+            message.args = args;
+            handlePrefixCommand(message, cmd, settings.prefix);
+        }
     }
-};
+
+}
