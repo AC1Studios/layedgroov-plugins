@@ -120,10 +120,9 @@ module.exports = {
 /**
  * @param {Message | CommandInteraction} arg0
  */
-async function getHelpMenu({ client, guild }) {
-    const { enabled_plugins } = await db.getSettings(guild);
+async function getHelpMenu({ client, guild }, usedPrefix = null) {
+    const { enabled_plugins } = await guild.getSettings("core");
 
-    // Menu Row
     const options = [];
     for (const plugin of client.pluginManager.plugins.filter((p) => !p.ownerOnly)) {
         if (!enabled_plugins.includes(plugin.name)) continue;
@@ -131,7 +130,6 @@ async function getHelpMenu({ client, guild }) {
             label: plugin.name,
             value: plugin.name,
             description: guild.getT("core:HELP.MENU_DESC", { plugin: plugin.name }),
-            // emoji: v.emoji,
         });
     }
 
@@ -142,45 +140,48 @@ async function getHelpMenu({ client, guild }) {
             .addOptions(options),
     );
 
-    // Buttons Row
-    let components = [];
-    components.push(
+    // Buttons Row: Previous, Home (disabled initially), Next
+    let components = [
         new ButtonBuilder()
             .setCustomId("previousBtn")
-            .setEmoji("⬅️")
+            .setEmoji("<:Leftarrow:1394891896278487040>")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
         new ButtonBuilder()
+            .setCustomId("homeBtn")
+            .setEmoji("<:Home:1394891882533884036>")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true), // Disabled on main menu
+        new ButtonBuilder()
             .setCustomId("nextBtn")
-            .setEmoji("➡️")
+            .setEmoji("<:Rightarrow:1394891908140236911>")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
-    );
+    ];
 
     let buttonsRow = new ActionRowBuilder().addComponents(components);
     const config = await client.pluginManager.getPlugin("core").getConfig();
+
     const embed = EmbedUtils.embed()
         .setThumbnail(client.user.displayAvatarURL())
+        .setImage("https://media.discordapp.net/attachments/925107435822272522/1095401318044139600/layedgroov_banner.png")
         .setDescription(
-            "**About Me:**\n" +
-                `Hello I am ${guild.members.me.displayName}!\n` +
-                "A cool multipurpose discord bot which can serve all your needs\n\n" +
-                `**Invite Me:** [Here](${client.getInvite()})\n` +
-                `**Support Server:** [Join](${config["SUPPORT_SERVER"]})`,
+            `Hello I am ${guild.members.me.displayName}!\n` +
+            `- **__Select a category from the dropdown menu below!__**\n` +
+            `- **__Use the Arrows to go to the next page!__**\n` +
+            `- **__Select the Home button to go back to this page__**\n` +
+            `- **__For more details on any command, use ${usedPrefix ?? ""}help <command>.__**\n\n` +
+            `**Invite Me:** [Here](${client.getInvite()})\n` +
+            `**Enable plugins here:** [Dashboard](https://layedgroov.up.railway.app/dashboard)\n` +
+            `**Support Server:** [Join](${config["SUPPORT_SERVER"]})`
         );
 
     return {
         embeds: [embed],
         components: [menuRow, buttonsRow],
     };
-}
+};
 
-/**
- * @param {Message} msg
- * @param {string} userId
- * @param {string} prefix
- * @param {string[]} disabledCmds
- */
 const waiter = (msg, userId, prefix, disabledCmds) => {
     const collector = msg.channel.createMessageComponentCollector({
         filter: (reactor) => reactor.user.id === userId && msg.id === reactor.message.id,
@@ -194,8 +195,31 @@ const waiter = (msg, userId, prefix, disabledCmds) => {
     let menuRow = msg.components[0];
     let buttonsRow = msg.components[1];
 
+    // Helper to rebuild buttons row based on current page and embeds length
+    const buildButtonsRow = () => {
+        const previousBtn = new ButtonBuilder()
+            .setCustomId("previousBtn")
+            .setEmoji("<:Leftarrow:1394891896278487040>")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(currentPage === 0);
+
+        const homeBtn = new ButtonBuilder()
+            .setCustomId("homeBtn")
+            .setEmoji("<:Home:1394891882533884036>")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(false);
+
+        const nextBtn = new ButtonBuilder()
+            .setCustomId("nextBtn")
+            .setEmoji("<:Rightarrow:1394891908140236911>")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(currentPage === arrEmbeds.length - 1);
+
+        return new ActionRowBuilder().addComponents([previousBtn, homeBtn, nextBtn]);
+    };
+
     collector.on("collect", async (response) => {
-        if (!["help-menu", "previousBtn", "nextBtn"].includes(response.customId)) return;
+        if (!["help-menu", "previousBtn", "nextBtn", "homeBtn"].includes(response.customId)) return;
         await response.deferUpdate();
 
         switch (response.customId) {
@@ -206,44 +230,62 @@ const waiter = (msg, userId, prefix, disabledCmds) => {
                     : getSlashPluginCommandsEmbed(msg.guild, cat, disabledCmds);
                 currentPage = 0;
 
-                // Buttons Row
-                let components = [];
-                buttonsRow.components.forEach((button) =>
-                    components.push(
-                        ButtonBuilder.from(button).setDisabled(arrEmbeds.length > 1 ? false : true),
-                    ),
-                );
+                buttonsRow = buildButtonsRow();
 
-                buttonsRow = new ActionRowBuilder().addComponents(components);
-                msg.editable &&
-                    (await msg.edit({
+                if (msg.editable) {
+                    await msg.edit({
                         embeds: [arrEmbeds[currentPage]],
                         components: [menuRow, buttonsRow],
-                    }));
+                    });
+                }
                 break;
             }
 
             case "previousBtn":
                 if (currentPage !== 0) {
                     --currentPage;
-                    msg.editable &&
-                        (await msg.edit({
+                    buttonsRow = buildButtonsRow();
+
+                    if (msg.editable) {
+                        await msg.edit({
                             embeds: [arrEmbeds[currentPage]],
                             components: [menuRow, buttonsRow],
-                        }));
+                        });
+                    }
                 }
                 break;
 
             case "nextBtn":
                 if (currentPage < arrEmbeds.length - 1) {
-                    currentPage++;
-                    msg.editable &&
-                        (await msg.edit({
+                    ++currentPage;
+                    buttonsRow = buildButtonsRow();
+
+                    if (msg.editable) {
+                        await msg.edit({
                             embeds: [arrEmbeds[currentPage]],
                             components: [menuRow, buttonsRow],
-                        }));
+                        });
+                    }
                 }
                 break;
+
+            case "homeBtn": {
+                // Reset variables
+                arrEmbeds = [];
+                currentPage = 0;
+
+                // Get main menu embed + components fresh
+                const mainMenu = await getHelpMenu(msg, prefix);
+
+                // Update references to menuRow and buttonsRow
+                menuRow = mainMenu.components[0];
+                buttonsRow = mainMenu.components[1];
+
+                if (msg.editable) {
+                    await msg.edit(mainMenu);
+                }
+                break;
+            }
         }
     });
 
@@ -254,90 +296,7 @@ const waiter = (msg, userId, prefix, disabledCmds) => {
 };
 
 /**
- * @param {import('discord.js').ChatInputCommandInteraction | import('discord.js').Message} arg0
- * @param {string} pluginName
- * @param {string} prefix
- * @param {string[]} disabledCmds
- */
-const pluginWaiter = async (arg0, pluginName, prefix, disabledCmds) => {
-    let arrEmbeds = prefix
-        ? getPrefixPluginCommandEmbed(arg0.guild, pluginName, prefix, disabledCmds)
-        : getSlashPluginCommandsEmbed(arg0.guild, pluginName, disabledCmds, disabledCmds);
-
-    let currentPage = 0;
-    let buttonsRow = [];
-
-    if (arrEmbeds.length > 1) {
-        buttonsRow = new ActionRowBuilder().addComponents([
-            new ButtonBuilder()
-                .setCustomId("previousBtn")
-                .setEmoji("⬅️")
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(false),
-            new ButtonBuilder()
-                .setCustomId("nextBtn")
-                .setEmoji("➡️")
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(false),
-        ]);
-    }
-
-    const reply = {
-        embeds: [arrEmbeds[currentPage]],
-        components: arrEmbeds.length > 1 ? [buttonsRow] : [],
-    };
-
-    const sentMsg = prefix ? await arg0.reply(reply) : await arg0.followUp(reply);
-    const authorId = prefix ? arg0.author.id : arg0.user.id;
-    if (arrEmbeds.length > 1) {
-        const collector = arg0.channel.createMessageComponentCollector({
-            filter: (reactor) => reactor.user.id === authorId && sentMsg.id === reactor.message.id,
-            componentType: ComponentType.Button,
-            idle: IDLE_TIMEOUT * 1000,
-            dispose: true,
-            time: 5 * 60 * 1000,
-        });
-
-        collector.on("collect", async (response) => {
-            if (!["previousBtn", "nextBtn"].includes(response.customId)) return;
-            await response.deferUpdate();
-
-            switch (response.customId) {
-                case "previousBtn":
-                    if (currentPage !== 0) {
-                        --currentPage;
-                        if (sentMsg.editable) {
-                            await sentMsg.edit({
-                                embeds: [arrEmbeds[currentPage]],
-                                components: [buttonsRow],
-                            });
-                        }
-                    }
-                    break;
-
-                case "nextBtn":
-                    if (currentPage < arrEmbeds.length - 1) {
-                        currentPage++;
-                        if (sentMsg.editable) {
-                            await sentMsg.edit({
-                                embeds: [arrEmbeds[currentPage]],
-                                components: [buttonsRow],
-                            });
-                        }
-                    }
-                    break;
-            }
-        });
-
-        collector.on("end", () => {
-            if (!sentMsg.guild || !sentMsg.channel) return;
-            return sentMsg.editable && sentMsg.edit({ components: [] });
-        });
-    }
-};
-
-/**
- * Returns an array of message embeds for a particular command category [SLASH COMMANDS]
+ * Returns an array of message embeds for slash commands in a plugin
  * @param {import('discord.js').Guild} guild
  * @param {string} pluginName
  * @param {string[]} disabledCmds
@@ -349,7 +308,6 @@ function getSlashPluginCommandsEmbed(guild, pluginName, disabledCmds) {
 
     if (commands.length === 0) {
         const embed = EmbedUtils.embed()
-            // .setThumbnail(CommandCategory[category]?.image)
             .setAuthor({ name: `Plugin ${pluginName.toUpperCase()}` })
             .setDescription(guild.getT("core:HELP.EMPTY_CATEGORY"));
 
@@ -370,11 +328,10 @@ function getSlashPluginCommandsEmbed(guild, pluginName, disabledCmds) {
                 (opt) => opt.type === ApplicationCommandOptionType.Subcommand,
             );
             const subCmdsString = subCmds?.map((s) => s.name).join(", ");
-            return `\`/${cmd.name}\`\n ❯ **${guild.getT("core:HELP.CMD_DESC")}**: ${guild.getT(cmd.description)}\n ${
-                !subCmds?.length
-                    ? "\n"
-                    : `❯ **${guild.getT("core:HELP.CMD_SUBCOMMANDS")} [${subCmds?.length}]**: ${subCmdsString}\n`
-            } `;
+            return `\`/${cmd.name}\`\n ❯ **${guild.getT("core:HELP.CMD_DESC")}**: ${guild.getT(cmd.description)}\n ${!subCmds?.length
+                ? "\n"
+                : `❯ **${guild.getT("core:HELP.CMD_SUBCOMMANDS")} [${subCmds?.length}]**: ${subCmdsString}\n`
+                } `;
         });
 
         arrSplitted.push(toAdd);
@@ -382,7 +339,6 @@ function getSlashPluginCommandsEmbed(guild, pluginName, disabledCmds) {
 
     arrSplitted.forEach((item, index) => {
         const embed = EmbedUtils.embed()
-            // .setThumbnail(CommandCategory[category]?.image)
             .setAuthor({ name: `Plugin ${pluginName.toUpperCase()}` })
             .setDescription(item.join("\n"))
             .setFooter({
@@ -399,11 +355,11 @@ function getSlashPluginCommandsEmbed(guild, pluginName, disabledCmds) {
 }
 
 /**
- * Returns an array of message embeds for a particular command category [MESSAGE COMMANDS]
+ * Returns an array of message embeds for prefix commands in a plugin
  * @param {import('discord.js').Guild} guild
  * @param {string} pluginName
  * @param {string} prefix
- *
+ * @param {string[]} disabledCmds
  */
 function getPrefixPluginCommandEmbed(guild, pluginName, prefix, disabledCmds) {
     const commands = [
@@ -412,7 +368,6 @@ function getPrefixPluginCommandEmbed(guild, pluginName, prefix, disabledCmds) {
 
     if (commands.length === 0) {
         const embed = EmbedUtils.embed()
-            // .setThumbnail(CommandCategory[pluginName]?.image)
             .setAuthor({ name: `Plugin ${guild.getT(pluginName.toLowerCase() + ":TITLE")}` })
             .setDescription(guild.getT("core:HELP.EMPTY_CATEGORY"));
 
@@ -430,18 +385,16 @@ function getPrefixPluginCommandEmbed(guild, pluginName, prefix, disabledCmds) {
         toAdd = toAdd.map((cmd) => {
             const subCmds = cmd.command.subcommands;
             const subCmdsString = subCmds?.map((s) => s.trigger.split(" ")[0]).join(", ");
-            return `\`${prefix}${cmd.name}\`\n ❯ **${guild.getT("core:HELP.CMD_DESC")}**: ${guild.getT(cmd.description)}\n ${
-                !subCmds?.length
-                    ? "\n"
-                    : `❯ **${guild.getT("core:HELP.CMD_SUBCOMMANDS")} [${subCmds?.length}]**: ${subCmdsString}\n`
-            } `;
+            return `\`${prefix}${cmd.name}\`\n ❯ **${guild.getT("core:HELP.CMD_DESC")}**: ${guild.getT(cmd.description)}\n ${!subCmds?.length
+                ? "\n"
+                : `❯ **${guild.getT("core:HELP.CMD_SUBCOMMANDS")} [${subCmds?.length}]**: ${subCmdsString}\n`
+                } `;
         });
         arrSplitted.push(toAdd);
     }
 
     arrSplitted.forEach((item, index) => {
         const embed = EmbedUtils.embed()
-            // .setThumbnail(CommandCategory[pluginName]?.image)
             .setAuthor({ name: `Plugin ${guild.getT(pluginName.toLowerCase() + ":TITLE")}` })
             .setDescription(item.join("\n"))
             .setFooter({
