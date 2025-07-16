@@ -1,0 +1,16 @@
+{
+    "name": "anime",
+    "description": "Anime commands for Strange",
+    "version": "0.1.0-beta",
+    "main": "index.js",
+    "author": "Sai Teja Madha",
+    "license": "ISC",
+    "dependencies": {
+    "nekos-best.js": "^6.4.0"
+    },
+    "peerDependencies": {
+        "discord.js": "^14.19.0",
+        "express": "^4.21.2",
+        "strange-sdk": "workspace:*"
+    }
+}
