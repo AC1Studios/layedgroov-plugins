@@ -5,17 +5,17 @@
     "DASHBOARD": {
         "ENABLED": true,
         "ENCRYPT": true,
-        "LOGO_NAME": "Strange",
+        "LOGO_NAME": "Layedgroov",
         "LOGO_URL": "/images/logo.png"
     },
     "PREFIX_COMMANDS": {
         "ENABLED": true,
-        "DEFAULT_PREFIX": "!"
+        "DEFAULT_PREFIX": "lay"
     },
     "INTERACTIONS": {
-        "SLASH": false,
-        "CONTEXT": false
+        "SLASH": true,
+        "CONTEXT": true
     },
-    "SUPPORT_SERVER": "https://discord.gg/abc123",
+    "SUPPORT_SERVER": "https://discord.gg/aCjCnmDg7h",
     "ENABLED_PLUGINS": []
 }
