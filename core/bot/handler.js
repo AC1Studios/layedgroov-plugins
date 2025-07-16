@@ -10,8 +10,11 @@ const OWNER_IDS = process.env.OWNER_IDS?.split(",").map((id) => id.trim());
  * @param {string} prefix
  */
 async function handlePrefixCommand(message, cmd, prefix) {
-    const args = message.content.replace(prefix, "").split(/\s+/);
-    const invoke = args.shift().toLowerCase();
+    const body = message.content.slice(prefix.length).trim();
+    const args = typeof message.args !== "undefined"
+        ? message.args.map(arg => arg.trim())
+        : body.split(/\s+/).slice(1);
+    const invoke = body.split(/\s+/)[0].toLowerCase();
 
     const data = {};
     data.prefix = prefix;
