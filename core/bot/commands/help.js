@@ -10,6 +10,7 @@ const {
 } = require("discord.js");
 const { getCommandUsage, getSlashUsage } = require("../handler");
 const { EmbedUtils } = require("strange-sdk/utils");
+const db = require("../../db.service");
 
 const CMDS_PER_PAGE = 5;
 const IDLE_TIMEOUT = 30;
@@ -49,14 +50,14 @@ module.exports = {
 
         // !help
         if (!trigger) {
-            const { disabled_prefix } = await message.guild.getSettings("core");
-            const response = await getHelpMenu(message, prefix);
+            const { disabled_prefix } = await db.getSettings(message.guild);
+            const response = await getHelpMenu(message);
             const sentMsg = await message.reply(response);
             return waiter(sentMsg, message.author.id, prefix, disabled_prefix);
         }
 
-        // check if plugin help (!help plugin)
-        const settings = await message.guild.getSettings("core");
+        // check if category help (!help cat)
+        const settings = await db.getSettings(message.guild);
         const { enabled_plugins, disabled_prefix } = settings;
         if (
             message.client.pluginManager.plugins.some(
@@ -73,7 +74,7 @@ module.exports = {
             return message.reply({ embeds: [embed] });
         }
 
-        // No matching command/plugin found
+        // No matching command/category found
         await message.replyT("core:HELP.NOT_FOUND");
     },
 
@@ -81,16 +82,16 @@ module.exports = {
         let pluginName = interaction.options.getString("plugin");
         let cmdName = interaction.options.getString("command");
 
-        // /help with no args
+        // !help
         if (!cmdName && !pluginName) {
-            const { disabled_slash } = await interaction.guild.getSettings("core");
-            const response = await getHelpMenu(interaction, "/");
+            const { disabled_slash } = await db.getSettings(interaction.guild);
+            const response = await getHelpMenu(interaction);
             const sentMsg = await interaction.followUp(response);
             return waiter(sentMsg, interaction.user.id, null, disabled_slash);
         }
 
-        // plugin help /help plugin
-        const settings = await interaction.guild.getSettings("core");
+        // check if category help (!help cat)
+        const settings = await db.getSettings(interaction.guild);
         const { enabled_plugins, disabled_slash } = settings;
         if (pluginName) {
             if (
@@ -99,12 +100,12 @@ module.exports = {
                         p.name === pluginName && !p.ownerOnly && enabled_plugins.includes(p.name),
                 )
             ) {
-                return pluginWaiter(interaction, pluginName, null, disabled_slash);
+                return pluginWaiter(interaction, pluginName, disabled_slash);
             }
             return interaction.followUpT("core:HELP.NOT_FOUND");
         }
 
-        // command help /help command
+        // check if command help (!help cmdName)
         if (cmdName) {
             const cmd = interaction.client.slashCommands.get(cmdName);
             if (cmd && !disabled_slash.includes(cmd.name)) {
@@ -118,11 +119,11 @@ module.exports = {
 
 /**
  * @param {Message | CommandInteraction} arg0
- * @param {string | null} usedPrefix
  */
-async function getHelpMenu({ client, guild }, usedPrefix = null) {
-    const { enabled_plugins } = await guild.getSettings("core");
+async function getHelpMenu({ client, guild }) {
+    const { enabled_plugins } = await db.getSettings(guild);
 
+    // Menu Row
     const options = [];
     for (const plugin of client.pluginManager.plugins.filter((p) => !p.ownerOnly)) {
         if (!enabled_plugins.includes(plugin.name)) continue;
@@ -130,6 +131,7 @@ async function getHelpMenu({ client, guild }, usedPrefix = null) {
             label: plugin.name,
             value: plugin.name,
             description: guild.getT("core:HELP.MENU_DESC", { plugin: plugin.name }),
+            // emoji: v.emoji,
         });
     }
 
@@ -140,48 +142,45 @@ async function getHelpMenu({ client, guild }, usedPrefix = null) {
             .addOptions(options),
     );
 
-    // Buttons Row: Previous, Home (disabled initially), Next
-    let components = [
+    // Buttons Row
+    let components = [];
+    components.push(
         new ButtonBuilder()
             .setCustomId("previousBtn")
-            .setEmoji("<:Leftarrow:1394891896278487040>")
+            .setEmoji("⬅️")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
-        new ButtonBuilder()
-            .setCustomId("homeBtn")
-            .setEmoji("<:Home:1394891882533884036>")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true), // Disabled on main menu
         new ButtonBuilder()
             .setCustomId("nextBtn")
-            .setEmoji("<:Rightarrow:1394891908140236911>")
+            .setEmoji("➡️")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
-    ];
+    );
 
     let buttonsRow = new ActionRowBuilder().addComponents(components);
     const config = await client.pluginManager.getPlugin("core").getConfig();
-
     const embed = EmbedUtils.embed()
         .setThumbnail(client.user.displayAvatarURL())
-        .setImage("https://media.discordapp.net/attachments/925107435822272522/1095401318044139600/layedgroov_banner.png")
         .setDescription(
-            `Hello I am ${guild.members.me.displayName}!\n` +
-            `- **__Select a category from the dropdown menu below!__**\n` +
-            `- **__Use the Arrows to go to the next page!__**\n` +
-            `- **__Select the Home button to go back to this page__**\n` +
-            `- **__For more details on any command, use ${usedPrefix ?? ""}help <command>.__**\n\n` +
-            `**Invite Me:** [Here](${client.getInvite()})\n` +
-            `**Enable plugins here:** [Dashboard](https://layedgroov.up.railway.app/dashboard)\n` +
-            `**Support Server:** [Join](${config["SUPPORT_SERVER"]})`
+            "**About Me:**\n" +
+                `Hello I am ${guild.members.me.displayName}!\n` +
+                "A cool multipurpose discord bot which can serve all your needs\n\n" +
+                `**Invite Me:** [Here](${client.getInvite()})\n` +
+                `**Support Server:** [Join](${config["SUPPORT_SERVER"]})`,
         );
 
     return {
         embeds: [embed],
         components: [menuRow, buttonsRow],
     };
-};
+}
 
+/**
+ * @param {Message} msg
+ * @param {string} userId
+ * @param {string} prefix
+ * @param {string[]} disabledCmds
+ */
 const waiter = (msg, userId, prefix, disabledCmds) => {
     const collector = msg.channel.createMessageComponentCollector({
         filter: (reactor) => reactor.user.id === userId && msg.id === reactor.message.id,
@@ -195,31 +194,8 @@ const waiter = (msg, userId, prefix, disabledCmds) => {
     let menuRow = msg.components[0];
     let buttonsRow = msg.components[1];
 
-    // Helper to rebuild buttons row based on current page and embeds length
-    const buildButtonsRow = () => {
-        const previousBtn = new ButtonBuilder()
-            .setCustomId("previousBtn")
-            .setEmoji("<:Leftarrow:1394891896278487040>")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(currentPage === 0);
-
-        const homeBtn = new ButtonBuilder()
-            .setCustomId("homeBtn")
-            .setEmoji("<:Home:1394891882533884036>")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(false);
-
-        const nextBtn = new ButtonBuilder()
-            .setCustomId("nextBtn")
-            .setEmoji("<:Rightarrow:1394891908140236911>")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(currentPage === arrEmbeds.length - 1);
-
-        return new ActionRowBuilder().addComponents([previousBtn, homeBtn, nextBtn]);
-    };
-
     collector.on("collect", async (response) => {
-        if (!["help-menu", "previousBtn", "nextBtn", "homeBtn"].includes(response.customId)) return;
+        if (!["help-menu", "previousBtn", "nextBtn"].includes(response.customId)) return;
         await response.deferUpdate();
 
         switch (response.customId) {
@@ -230,62 +206,44 @@ const waiter = (msg, userId, prefix, disabledCmds) => {
                     : getSlashPluginCommandsEmbed(msg.guild, cat, disabledCmds);
                 currentPage = 0;
 
-                buttonsRow = buildButtonsRow();
+                // Buttons Row
+                let components = [];
+                buttonsRow.components.forEach((button) =>
+                    components.push(
+                        ButtonBuilder.from(button).setDisabled(arrEmbeds.length > 1 ? false : true),
+                    ),
+                );
 
-                if (msg.editable) {
-                    await msg.edit({
+                buttonsRow = new ActionRowBuilder().addComponents(components);
+                msg.editable &&
+                    (await msg.edit({
                         embeds: [arrEmbeds[currentPage]],
                         components: [menuRow, buttonsRow],
-                    });
-                }
+                    }));
                 break;
             }
 
             case "previousBtn":
                 if (currentPage !== 0) {
                     --currentPage;
-                    buttonsRow = buildButtonsRow();
-
-                    if (msg.editable) {
-                        await msg.edit({
+                    msg.editable &&
+                        (await msg.edit({
                             embeds: [arrEmbeds[currentPage]],
                             components: [menuRow, buttonsRow],
-                        });
-                    }
+                        }));
                 }
                 break;
 
             case "nextBtn":
                 if (currentPage < arrEmbeds.length - 1) {
-                    ++currentPage;
-                    buttonsRow = buildButtonsRow();
-
-                    if (msg.editable) {
-                        await msg.edit({
+                    currentPage++;
+                    msg.editable &&
+                        (await msg.edit({
                             embeds: [arrEmbeds[currentPage]],
                             components: [menuRow, buttonsRow],
-                        });
-                    }
+                        }));
                 }
                 break;
-
-            case "homeBtn": {
-                // Reset variables
-                arrEmbeds = [];
-                currentPage = 0;
-
-                // Get main menu embed + components fresh
-                const mainMenu = await getHelpMenu(msg, prefix);
-
-                // Update references to menuRow and buttonsRow
-                menuRow = mainMenu.components[0];
-                buttonsRow = mainMenu.components[1];
-
-                if (msg.editable) {
-                    await msg.edit(mainMenu);
-                }
-                break;
-            }
         }
     });
 
@@ -296,7 +254,90 @@ const waiter = (msg, userId, prefix, disabledCmds) => {
 };
 
 /**
- * Returns an array of message embeds for slash commands in a plugin
+ * @param {import('discord.js').ChatInputCommandInteraction | import('discord.js').Message} arg0
+ * @param {string} pluginName
+ * @param {string} prefix
+ * @param {string[]} disabledCmds
+ */
+const pluginWaiter = async (arg0, pluginName, prefix, disabledCmds) => {
+    let arrEmbeds = prefix
+        ? getPrefixPluginCommandEmbed(arg0.guild, pluginName, prefix, disabledCmds)
+        : getSlashPluginCommandsEmbed(arg0.guild, pluginName, disabledCmds, disabledCmds);
+
+    let currentPage = 0;
+    let buttonsRow = [];
+
+    if (arrEmbeds.length > 1) {
+        buttonsRow = new ActionRowBuilder().addComponents([
+            new ButtonBuilder()
+                .setCustomId("previousBtn")
+                .setEmoji("⬅️")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(false),
+            new ButtonBuilder()
+                .setCustomId("nextBtn")
+                .setEmoji("➡️")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(false),
+        ]);
+    }
+
+    const reply = {
+        embeds: [arrEmbeds[currentPage]],
+        components: arrEmbeds.length > 1 ? [buttonsRow] : [],
+    };
+
+    const sentMsg = prefix ? await arg0.reply(reply) : await arg0.followUp(reply);
+    const authorId = prefix ? arg0.author.id : arg0.user.id;
+    if (arrEmbeds.length > 1) {
+        const collector = arg0.channel.createMessageComponentCollector({
+            filter: (reactor) => reactor.user.id === authorId && sentMsg.id === reactor.message.id,
+            componentType: ComponentType.Button,
+            idle: IDLE_TIMEOUT * 1000,
+            dispose: true,
+            time: 5 * 60 * 1000,
+        });
+
+        collector.on("collect", async (response) => {
+            if (!["previousBtn", "nextBtn"].includes(response.customId)) return;
+            await response.deferUpdate();
+
+            switch (response.customId) {
+                case "previousBtn":
+                    if (currentPage !== 0) {
+                        --currentPage;
+                        if (sentMsg.editable) {
+                            await sentMsg.edit({
+                                embeds: [arrEmbeds[currentPage]],
+                                components: [buttonsRow],
+                            });
+                        }
+                    }
+                    break;
+
+                case "nextBtn":
+                    if (currentPage < arrEmbeds.length - 1) {
+                        currentPage++;
+                        if (sentMsg.editable) {
+                            await sentMsg.edit({
+                                embeds: [arrEmbeds[currentPage]],
+                                components: [buttonsRow],
+                            });
+                        }
+                    }
+                    break;
+            }
+        });
+
+        collector.on("end", () => {
+            if (!sentMsg.guild || !sentMsg.channel) return;
+            return sentMsg.editable && sentMsg.edit({ components: [] });
+        });
+    }
+};
+
+/**
+ * Returns an array of message embeds for a particular command category [SLASH COMMANDS]
  * @param {import('discord.js').Guild} guild
  * @param {string} pluginName
  * @param {string[]} disabledCmds
@@ -308,6 +349,7 @@ function getSlashPluginCommandsEmbed(guild, pluginName, disabledCmds) {
 
     if (commands.length === 0) {
         const embed = EmbedUtils.embed()
+            // .setThumbnail(CommandCategory[category]?.image)
             .setAuthor({ name: `Plugin ${pluginName.toUpperCase()}` })
             .setDescription(guild.getT("core:HELP.EMPTY_CATEGORY"));
 
@@ -328,10 +370,11 @@ function getSlashPluginCommandsEmbed(guild, pluginName, disabledCmds) {
                 (opt) => opt.type === ApplicationCommandOptionType.Subcommand,
             );
             const subCmdsString = subCmds?.map((s) => s.name).join(", ");
-            return `\`/${cmd.name}\`\n ❯ **${guild.getT("core:HELP.CMD_DESC")}**: ${guild.getT(cmd.description)}\n ${!subCmds?.length
-                ? "\n"
-                : `❯ **${guild.getT("core:HELP.CMD_SUBCOMMANDS")} [${subCmds?.length}]**: ${subCmdsString}\n`
-                } `;
+            return `\`/${cmd.name}\`\n ❯ **${guild.getT("core:HELP.CMD_DESC")}**: ${guild.getT(cmd.description)}\n ${
+                !subCmds?.length
+                    ? "\n"
+                    : `❯ **${guild.getT("core:HELP.CMD_SUBCOMMANDS")} [${subCmds?.length}]**: ${subCmdsString}\n`
+            } `;
         });
 
         arrSplitted.push(toAdd);
@@ -339,6 +382,7 @@ function getSlashPluginCommandsEmbed(guild, pluginName, disabledCmds) {
 
     arrSplitted.forEach((item, index) => {
         const embed = EmbedUtils.embed()
+            // .setThumbnail(CommandCategory[category]?.image)
             .setAuthor({ name: `Plugin ${pluginName.toUpperCase()}` })
             .setDescription(item.join("\n"))
             .setFooter({
@@ -355,11 +399,11 @@ function getSlashPluginCommandsEmbed(guild, pluginName, disabledCmds) {
 }
 
 /**
- * Returns an array of message embeds for prefix commands in a plugin
+ * Returns an array of message embeds for a particular command category [MESSAGE COMMANDS]
  * @param {import('discord.js').Guild} guild
  * @param {string} pluginName
  * @param {string} prefix
- * @param {string[]} disabledCmds
+ *
  */
 function getPrefixPluginCommandEmbed(guild, pluginName, prefix, disabledCmds) {
     const commands = [
@@ -368,6 +412,7 @@ function getPrefixPluginCommandEmbed(guild, pluginName, prefix, disabledCmds) {
 
     if (commands.length === 0) {
         const embed = EmbedUtils.embed()
+            // .setThumbnail(CommandCategory[pluginName]?.image)
             .setAuthor({ name: `Plugin ${guild.getT(pluginName.toLowerCase() + ":TITLE")}` })
             .setDescription(guild.getT("core:HELP.EMPTY_CATEGORY"));
 
@@ -385,16 +430,18 @@ function getPrefixPluginCommandEmbed(guild, pluginName, prefix, disabledCmds) {
         toAdd = toAdd.map((cmd) => {
             const subCmds = cmd.command.subcommands;
             const subCmdsString = subCmds?.map((s) => s.trigger.split(" ")[0]).join(", ");
-            return `\`${prefix}${cmd.name}\`\n ❯ **${guild.getT("core:HELP.CMD_DESC")}**: ${guild.getT(cmd.description)}\n ${!subCmds?.length
-                ? "\n"
-                : `❯ **${guild.getT("core:HELP.CMD_SUBCOMMANDS")} [${subCmds?.length}]**: ${subCmdsString}\n`
-                } `;
+            return `\`${prefix}${cmd.name}\`\n ❯ **${guild.getT("core:HELP.CMD_DESC")}**: ${guild.getT(cmd.description)}\n ${
+                !subCmds?.length
+                    ? "\n"
+                    : `❯ **${guild.getT("core:HELP.CMD_SUBCOMMANDS")} [${subCmds?.length}]**: ${subCmdsString}\n`
+            } `;
         });
         arrSplitted.push(toAdd);
     }
 
     arrSplitted.forEach((item, index) => {
         const embed = EmbedUtils.embed()
+            // .setThumbnail(CommandCategory[pluginName]?.image)
             .setAuthor({ name: `Plugin ${guild.getT(pluginName.toLowerCase() + ":TITLE")}` })
             .setDescription(item.join("\n"))
             .setFooter({

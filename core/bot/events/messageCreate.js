@@ -1,5 +1,6 @@
 const { handlePrefixCommand } = require("../handler");
 const plugin = require("../index");
+const db = require("../../db.service");
 
 /**
  * @param {import('discord.js').Message} message
@@ -10,14 +11,21 @@ module.exports = async (message) => {
     if (!message.guild || message.author.bot) return;
     const guild = message.guild;
 
-    const [config, settings] = await Promise.all([plugin.getConfig(), plugin.getSettings(guild)]);
+    const [config, settings] = await Promise.all([plugin.getConfig(), db.getSettings(guild)]);
 
     if (!config["PREFIX_COMMANDS"]["ENABLED"]) return;
 
     // check for bot mentions
-    if (message.content.includes(`${guild.client.user.id}`)) {
+    const mention = `<@${guild.client.user.id}>`;
+    const mentionNick = `<@!${guild.client.user.id}>`;
+
+    if (
+        message.content.trim() === mention ||
+        message.content.trim() === mentionNick
+    ) {
         message.channel.send(`> My prefix is \`${settings.prefix}\``);
     }
+
 
     if (message.content && message.content.toLowerCase().startsWith(settings.prefix.toLowerCase())) {
         const rawBody = message.content.slice(settings.prefix.length).trim();
