@@ -172,7 +172,7 @@ async function getHelpMenu({ client, guild }, usedPrefix = null) {
             `- **__Select the Home button to go back to this page__**\n` +
             `- **__For more details on any command, use ${usedPrefix ?? ""}help <command>.__**\n\n` +
             `**Invite Me:** [Here](${client.getInvite()})\n` +
-            `**Enable plugins here:** [Dashboard](https://layedgroov.up.railway.app/dashboard)\n` +
+            `**Enable plugins here:** [Dashboard](https://layedgroov.up.railway.app)\n` +
             `**Support Server:** [Join](${config["SUPPORT_SERVER"]})`
         );
 
