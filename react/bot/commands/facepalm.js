@@ -10,7 +10,7 @@ const nekosBest = new Client();
  * @type {import("strange-sdk").CommandType}
  */
 module.exports = {
-  name: "facepalm",
+  name: "facepalming",
   description: "Express facepalm in anime-style!",
   enabled: true,
   cooldown: 3,
