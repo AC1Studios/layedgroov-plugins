@@ -1,0 +1,67 @@
+[
+	{
+		"text": "Annoying",
+		"emoji": "🙄",
+		"color": "orange"
+	},
+	{
+		"text": "Kinda Cute",
+		"emoji": "😊",
+		"color": "pink"
+	},
+	{
+		"text": "Gross",
+		"emoji": "🤢",
+		"color": "#87ab08"
+	},
+	{
+		"text": "Hot",
+		"emoji": "🥵",
+		"color": "#ff69b4"
+	},
+	{
+		"text": "Boring",
+		"emoji": "😐",
+		"color": "orange"
+	},
+	{
+		"text": "Beautiful",
+		"emoji": "😊",
+		"color": "pink"
+	},
+	{
+		"text": "Sexy",
+		"emoji": "🥵",
+		"color": "#ff69b4"
+	},
+	{
+		"text": "Ugly",
+		"emoji": "🤢",
+		"color": "#87ab08"
+	},
+	{
+		"text": "Fun",
+		"emoji": "😄",
+		"color": "green"
+	},
+	{
+		"text": "Okay",
+		"emoji": "🙂",
+		"color": "orange"
+	},
+	{
+		"text": "Meh",
+		"emoji": "😐",
+		"color": "orange"
+	},
+	{
+		"text": "Funny",
+		"emoji": "😆",
+		"color": "green"
+	},
+	{
+		"text": "Gay",
+		"emoji": "🏳️‍🌈",
+		"color": "green"
+	}
+]
