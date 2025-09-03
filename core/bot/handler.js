@@ -83,7 +83,6 @@ async function handlePrefixCommand(message, cmd, prefix) {
  * Handles slash commands (DM-safe)
  */
 async function handleSlashCommand(interaction, cmd) {
-    // DMs won't have a guild
     const guild = interaction.guild;
 
     // Validations
@@ -162,6 +161,51 @@ async function handleSlashCommand(interaction, cmd) {
 }
 
 /**
+ * Handles context menu commands
+ */
+async function handleContext(interaction, context) {
+    const guild = interaction.guild;
+
+    // Cooldown
+    if (context.cooldown) {
+        const remaining = getRemainingCooldown("ctx", interaction.user.id, context);
+        if (remaining > 0) {
+            return interaction.reply({
+                content: guild?.getT("core:HANDLER.COOLDOWN", {
+                    time: MiscUtils.timeformat(remaining),
+                }) ?? `Cooldown: ${MiscUtils.timeformat(remaining)}`,
+                flags: MessageFlags.Ephemeral,
+            });
+        }
+    }
+
+    // User permissions
+    if (interaction.member && context.userPermissions?.length > 0) {
+        if (!interaction.member.permissions.has(context.userPermissions)) {
+            return interaction.reply({
+                content: guild?.getT("core:HANDLER.USER_PERMISSIONS", {
+                    permissions: MiscUtils.parsePermissions(context.userPermissions),
+                }) ?? "You do not have permission to run this command",
+                flags: MessageFlags.Ephemeral,
+            });
+        }
+    }
+
+    try {
+        await interaction.deferReply({ flags: context.ephemeral ? MessageFlags.Ephemeral : 0 });
+        await context.run({ interaction });
+    } catch (ex) {
+        interaction.followUp({
+            content: "An error occurred while running the command.",
+            ephemeral: true,
+        });
+        interaction.client.logger.error("contextRun", ex);
+    } finally {
+        if (context.cooldown) applyCooldown("ctx", interaction.user.id, context);
+    }
+}
+
+/**
  * Cooldown utils
  */
 function applyCooldown(type, memberId, cmd) {
@@ -185,6 +229,7 @@ function getRemainingCooldown(type, memberId, cmd) {
 module.exports = {
     handlePrefixCommand,
     handleSlashCommand,
+    handleContext,
     applyCooldown,
     getRemainingCooldown,
 };
