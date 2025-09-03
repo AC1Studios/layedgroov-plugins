@@ -8,6 +8,9 @@ const {
     MessageFlags
 } = require("discord.js");
 
+const path = require("path");
+const emotes = require(path.join(__dirname, "../../emotes.json")); // Load emotes.json
+
 const { Client } = require("nekos-best.js");
 const nekosBest = new Client();
 
@@ -50,6 +53,7 @@ module.exports = {
     command: { enabled: false },
     slashCommand: {
         enabled: true,
+        global: true,
         options: interactive.map(action => ({
             name: action,
             description: getDescription(action),
@@ -94,119 +98,118 @@ module.exports = {
             const gifUrl = results[0]?.url;
             const gifName = results[0]?.anime_name;
 
-            const attachment = new AttachmentBuilder(gifUrl, { name: "interaction.gif" });
-
-            let message;
-            let includeGif = false;
+            const attachment = gifUrl ? new AttachmentBuilder(gifUrl, { name: "interaction.gif" }) : null;
 
             const allowButton = user && user.id !== interaction.user.id;
+            const btnCustomId = `react_back_${subcommand}`;
 
-            if (allowButton) {
-                message = `**${interaction.user.username}** ${subcommand}s **${user.username}**`;
-                includeGif = true;
-            } else {
-                message = selfMessages[subcommand] || `**${interaction.user.username}** ${subcommand}s themselves?`;
-            }
+            const message = allowButton
+                ? `**${interaction.user.username}** ${subcommand}s **${user.username}**`
+                : selfMessages[subcommand] || `**${interaction.user.username}** ${subcommand}s themselves?`;
 
             const textParts = [
                 message,
                 (allowButton && text) ? `💬 *${text}*` : null,
-                (includeGif && gifName) ? `🎞️ *Anime source: ${gifName}*` : null
+                (allowButton && gifName) ? `🎞️ *Anime source: ${gifName}*` : null
             ].filter(Boolean);
 
             const components = [];
-
             if (allowButton) {
-                components.push(
-                    new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`react_back_${subcommand}`)
-                            .setLabel(`${subcommand.charAt(0).toUpperCase() + subcommand.slice(1)} Back`)
-                            .setStyle(ButtonStyle.Secondary) // Black/Grey button
-                    )
-                );
+                const emoteArray = emotes[subcommand] || [];
+                const randomEmote = emoteArray.length > 0
+                    ? emoteArray[Math.floor(Math.random() * emoteArray.length)]
+                    : null;
+
+                const button = new ButtonBuilder()
+                    .setCustomId(btnCustomId)
+                    .setLabel(`${subcommand.charAt(0).toUpperCase() + subcommand.slice(1)} Back`.trim())
+                    .setStyle(ButtonStyle.Secondary);
+
+                if (randomEmote) button.setEmoji(randomEmote); // Only set emoji if it exists
+
+                components.push(new ActionRowBuilder().addComponents(button));
             }
 
             const reply = await interaction.followUp({
                 content: textParts.join("\n"),
-                files: includeGif ? [attachment] : [],
+                files: attachment ? [attachment] : [],
                 components,
                 fetchReply: true
             });
 
-            if (allowButton) {
-                const collector = reply.createMessageComponentCollector({
-                    componentType: ComponentType.Button,
-                    time: 60_000, // 1 minute
-                });
+            if (!allowButton) return;
 
-                collector.on("collect", async (btnInteraction) => {
-                    if (btnInteraction.user.id !== user.id) {
-                        return btnInteraction.reply({
-                            content: "❌ You can't use this button.",
-                            flags: MessageFlags.Ephemeral
-                        });
+            let handled = false;
+
+            const collector = reply.createMessageComponentCollector({
+                componentType: ComponentType.Button
+            });
+
+            collector.on("collect", async (btnInteraction) => {
+                if (btnInteraction.customId !== btnCustomId) return;
+
+                if (btnInteraction.user.id !== user.id) {
+                    return btnInteraction.reply({
+                        content: "❌ You can't use this button.",
+                        ephemeral: true
+                    });
+                }
+
+                if (handled) {
+                    return btnInteraction.reply({
+                        content: "❌ This button was already used.",
+                        ephemeral: true
+                    });
+                }
+
+                handled = true;
+
+                const disabledRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(btnCustomId)
+                        .setLabel(btnInteraction.component.label)
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true)
+                );
+
+                try {
+                    await btnInteraction.update({ components: [disabledRow] });
+                } catch {}
+
+                // Fetch back GIF
+                try {
+                    const { results: backResults } = await nekosBest.fetch(subcommand, 1);
+                    const backUrl = backResults?.[0]?.url;
+                    const backName = backResults?.[0]?.anime_name;
+
+                    const backAttachment = backUrl ? new AttachmentBuilder(backUrl, { name: "back.gif" }) : null;
+
+                    // Random emote for the back text
+                    let emoteText = "";
+                    const emoteArray = emotes[subcommand] || [];
+                    if (emoteArray.length > 0) {
+                        const randomIndex = Math.floor(Math.random() * emoteArray.length);
+                        emoteText = ` ${emoteArray[randomIndex]}`;
                     }
 
-                    await btnInteraction.deferUpdate();
+                    const backText = `**${user.username}** ${subcommand}s **${interaction.user.username}** back${emoteText}` +
+                        (backName ? `\n🎞️ *Anime source: ${backName}*` : "");
 
-                    const customId = btnInteraction.customId;
-                    const action = customId.replace("react_back_", "");
+                    await interaction.followUp({
+                        content: backText,
+                        files: backAttachment ? [backAttachment] : []
+                    });
 
+                } catch (err) {
+                    console.error(`[react_back][${subcommand}] fetch failed:`, err);
                     try {
-                        const { results } = await nekosBest.fetch(action, 1);
-
-                        if (!results || !results[0]?.url) {
-                            throw new Error(`No results returned for '${action}'`);
-                        }
-
-                        const backGif = new AttachmentBuilder(results[0].url, { name: "back.gif" });
-                        const backText = `**${user.username}** ${action}s **${interaction.user.username}** back!\n🎞️ *Anime source: ${results[0].anime_name}*`;
-
-                        await interaction.followUp({
-                            content: backText,
-                            files: [backGif]
+                        await btnInteraction.followUp({
+                            content: `❌ Failed to fetch a response for **${subcommand} back**.`,
+                            ephemeral: true
                         });
-
-                        await reply.edit({
-                            components: [
-                                new ActionRowBuilder().addComponents(
-                                    new ButtonBuilder()
-                                        .setCustomId(customId)
-                                        .setLabel(`${action.charAt(0).toUpperCase() + action.slice(1)} Back`)
-                                        .setStyle(ButtonStyle.Secondary)
-                                        .setDisabled(true)
-                                )
-                            ]
-                        });
-
-                        collector.stop();
-                    } catch (err) {
-                        console.error(`[react_back][${action}] fetch failed:`, err);
-                        await interaction.followUp({
-                            content: `❌ Failed to fetch a response for **${action} back**.`,
-                            flags: MessageFlags.Ephemeral
-                        });
-                    }
-                });
-
-                collector.on("end", async () => {
-                    if (reply.editable) {
-                        await reply.edit({
-                            components: [
-                                new ActionRowBuilder().addComponents(
-                                    new ButtonBuilder()
-                                        .setCustomId(`react_back_${subcommand}`)
-                                        .setLabel(`${subcommand.charAt(0).toUpperCase() + subcommand.slice(1)} Back`)
-                                        .setStyle(ButtonStyle.Secondary)
-                                        .setDisabled(true)
-                                )
-                            ]
-                        });
-                    }
-                });
-            }
-
+                    } catch {}
+                }
+            });
         } catch (error) {
             console.error(`[interaction] API error for ${subcommand}:`, error);
             return interaction.followUp({
