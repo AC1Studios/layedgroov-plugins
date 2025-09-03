@@ -23,4 +23,12 @@ module.exports = async (client) => {
 
         client.logger.success("Successfully registered interactions");
     });
+    // Register global commands once
+    await client.commandManager.registerGlobalInteractions();
+
+    // Register per-guild commands as before
+    client.guilds.cache.forEach(async (guild) => {
+        await client.commandManager.registerInteractions(guild.id);
+    });
+
 };
