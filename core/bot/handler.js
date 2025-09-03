@@ -5,9 +5,7 @@ const cooldownCache = new Map();
 const OWNER_IDS = process.env.OWNER_IDS?.split(",").map((id) => id.trim());
 
 /**
- * @param {import('discord.js').Message} message
- * @param {import('strange-sdk').CommandType} cmd
- * @param {string} prefix
+ * Handles prefix commands
  */
 async function handlePrefixCommand(message, cmd, prefix) {
     const body = message.content.slice(prefix.length).trim();
@@ -16,13 +14,13 @@ async function handlePrefixCommand(message, cmd, prefix) {
         : body.split(/\s+/).slice(1);
     const invoke = body.split(/\s+/)[0].toLowerCase();
 
-    const data = {};
-    data.prefix = prefix;
-    data.invoke = invoke;
+    const data = { prefix, invoke };
 
-    if (!message.channel.permissionsFor(message.guild.members.me).has("SendMessages")) return;
+    // Allow DMs
+    const canSend = message.channel.permissionsFor(message.guild?.members?.me ?? message.author);
+    if (message.guild && (!canSend || !canSend.has("SendMessages"))) return;
 
-    // callback validations
+    // Validations
     if (cmd.validations) {
         for (const validation of cmd.validations) {
             if (!validation.callback(message)) {
@@ -31,13 +29,13 @@ async function handlePrefixCommand(message, cmd, prefix) {
         }
     }
 
-    // Owner commands
+    // Owner check
     if (cmd.category === "OWNER" && !OWNER_IDS.includes(message.author.id)) {
         return message.replyT("core:HANDLER.OWNER_ONLY");
     }
 
-    // check user permissions
-    if (cmd.userPermissions && cmd.userPermissions?.length > 0) {
+    // User permissions
+    if (cmd.userPermissions?.length > 0 && message.guild) {
         if (!message.channel.permissionsFor(message.member).has(cmd.userPermissions)) {
             return message.replyT("core:HANDLER.USER_PERMISSIONS", {
                 permissions: MiscUtils.parsePermissions(cmd.userPermissions),
@@ -45,8 +43,8 @@ async function handlePrefixCommand(message, cmd, prefix) {
         }
     }
 
-    // check bot permissions
-    if (cmd.botPermissions && cmd.botPermissions.length > 0) {
+    // Bot permissions
+    if (cmd.botPermissions?.length > 0 && message.guild) {
         if (!message.channel.permissionsFor(message.guild.members.me).has(cmd.botPermissions)) {
             return message.replyT("core:HANDLER.BOT_PERMISSIONS", {
                 permissions: MiscUtils.parsePermissions(cmd.botPermissions),
@@ -54,13 +52,13 @@ async function handlePrefixCommand(message, cmd, prefix) {
         }
     }
 
-    // minArgs count
+    // Min args
     if (cmd.command.minArgsCount > args.length) {
         const usageEmbed = getCommandUsage(message.guild, cmd, prefix, invoke);
         return message.reply({ embeds: [usageEmbed] });
     }
 
-    // cooldown check
+    // Cooldown
     if (cmd.cooldown > 0) {
         const remaining = getRemainingCooldown("cmd", message.author.id, cmd);
         if (remaining > 0) {
@@ -71,11 +69,7 @@ async function handlePrefixCommand(message, cmd, prefix) {
     }
 
     try {
-        const context = {};
-        context.message = message;
-        context.prefix = prefix;
-        context.invoke = invoke;
-        context.args = args;
+        const context = { message, prefix, invoke, args };
         await cmd.messageRun(context);
     } catch (ex) {
         message.client.logger.error("messageRun", ex);
@@ -86,13 +80,13 @@ async function handlePrefixCommand(message, cmd, prefix) {
 }
 
 /**
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {import('strange-sdk').CommandType} cmd
+ * Handles slash commands (DM-safe)
  */
 async function handleSlashCommand(interaction, cmd) {
+    // DMs won't have a guild
     const guild = interaction.guild;
 
-    // callback validations
+    // Validations
     if (cmd.validations) {
         for (const validation of cmd.validations) {
             if (!validation.callback(interaction)) {
@@ -104,16 +98,16 @@ async function handleSlashCommand(interaction, cmd) {
         }
     }
 
-    // Owner commands
+    // Owner
     if (cmd.category === "OWNER" && !OWNER_IDS.includes(interaction.user.id)) {
         return interaction.reply({
-            content: guild.getT("core:HANDLER.OWNER_ONLY"),
+            content: guild?.getT("core:HANDLER.OWNER_ONLY") ?? "Owner only command",
             flags: MessageFlags.Ephemeral,
         });
     }
 
-    // user permissions
-    if (interaction.member && cmd.userPermissions?.length > 0) {
+    // User permissions (only in guilds)
+    if (interaction.member && guild && cmd.userPermissions?.length > 0) {
         if (!interaction.member.permissions.has(cmd.userPermissions)) {
             return interaction.reply({
                 content: guild.getT("core:HANDLER.USER_PERMISSIONS", {
@@ -124,9 +118,9 @@ async function handleSlashCommand(interaction, cmd) {
         }
     }
 
-    // bot permissions
-    if (cmd.botPermissions && cmd.botPermissions.length > 0) {
-        if (!interaction.guild.members.me.permissions.has(cmd.botPermissions)) {
+    // Bot permissions (only in guilds)
+    if (cmd.botPermissions?.length > 0 && guild) {
+        if (!guild.members.me.permissions.has(cmd.botPermissions)) {
             return interaction.reply({
                 content: guild.getT("core:HANDLER.BOT_PERMISSIONS", {
                     permissions: MiscUtils.parsePermissions(cmd.botPermissions),
@@ -136,14 +130,14 @@ async function handleSlashCommand(interaction, cmd) {
         }
     }
 
-    // cooldown check
+    // Cooldown
     if (cmd.cooldown > 0) {
         const remaining = getRemainingCooldown("cmd", interaction.user.id, cmd);
         if (remaining > 0) {
             return interaction.reply({
-                content: guild.getT("core:HANDLER.COOLDOWN", {
+                content: guild?.getT("core:HANDLER.COOLDOWN", {
                     time: MiscUtils.timeformat(remaining),
-                }),
+                }) ?? `Cooldown: ${MiscUtils.timeformat(remaining)}`,
                 flags: MessageFlags.Ephemeral,
             });
         }
@@ -151,138 +145,39 @@ async function handleSlashCommand(interaction, cmd) {
 
     try {
         await interaction.deferReply({
-            flags: cmd.slashCommand.ephemeral ? MessageFlags.Ephemeral : 0,
+            flags: cmd.slashCommand?.ephemeral ? MessageFlags.Ephemeral : 0,
         });
-        const context = {};
-        context.interaction = interaction;
+
+        const context = { interaction };
         await cmd.interactionRun(context);
     } catch (ex) {
         interaction.client.logger.error("interactionRun", ex);
-        await interaction.followUpT("core:HANDLER.ERROR");
+        await interaction.followUp({
+            content: "An error occurred while running the command.",
+            ephemeral: true,
+        });
     } finally {
         if (cmd.cooldown > 0) applyCooldown("cmd", interaction.user.id, cmd);
     }
 }
 
 /**
- * Build a usage embed for this command
- * @param {import('discord.js').Guild} guild - guild object
- * @param {import('strange-sdk').CommandType} cmd - command object
- * @param {string} prefix - guild bot prefix
- * @param {string} invoke - alias that was used to trigger this command
- * @param {string} [title] - the embed title
- */
-function getCommandUsage(guild, cmd, prefix, invoke, title = "Usage") {
-    let desc = "";
-    if (cmd.command.subcommands && cmd.command.subcommands.length > 0) {
-        cmd.command.subcommands.forEach((sub) => {
-            desc += `\`${prefix}${invoke || cmd.name} ${sub.trigger}\`\n❯ ${guild.getT(sub.description)}\n\n`;
-        });
-        if (cmd.cooldown) {
-            desc += `**Cooldown:** ${MiscUtils.timeformat(cmd.cooldown)}`;
-        }
-    } else {
-        desc += `\`\`\`css\n${prefix}${invoke || cmd.name} ${cmd.command.usage || ""}\`\`\``;
-        if (cmd.description !== "") desc += `\n**Help:** ${guild.getT(cmd.description)}`;
-        if (cmd.cooldown) desc += `\n**Cooldown:** ${MiscUtils.timeformat(cmd.cooldown)}`;
-    }
-
-    const embed = EmbedUtils.embed({ description: desc });
-    if (title) embed.setAuthor({ name: title });
-    return embed;
-}
-
-/**
- * @param {import('discord.js').Guild} guild - guild object
- * @param {import('strange-sdk').CommandType} cmd - command object
- */
-function getSlashUsage(guild, cmd) {
-    let desc = "";
-    if (cmd.slashCommand.options.find((o) => o.type === ApplicationCommandOptionType.Subcommand)) {
-        const subCmds = cmd.slashCommand.options.filter(
-            (opt) => opt.type === ApplicationCommandOptionType.Subcommand,
-        );
-        subCmds.forEach((sub) => {
-            desc += `\`/${cmd.name} ${sub.name}\`\n❯ ${guild.getT(sub.description)}\n\n`;
-        });
-    } else {
-        desc += `\`/${cmd.name}\`\n\n**Help:** ${guild.getT(cmd.description)}`;
-    }
-
-    if (cmd.cooldown) {
-        desc += `\n**Cooldown:** ${MiscUtils.timeformat(cmd.cooldown)}`;
-    }
-
-    return EmbedUtils.embed({ description: desc });
-}
-
-/**
- * @param {import('discord.js').ContextMenuCommandInteraction} interaction
- * @param {import('strange-sdk').ContextType} context
- */
-async function handleContext(interaction, context) {
-    const guild = interaction.guild;
-
-    // check cooldown
-    if (context.cooldown) {
-        const remaining = getRemainingCooldown("ctx", interaction.user.id, context);
-        if (remaining > 0) {
-            return interaction.reply({
-                content: guild.getT("core:HANDLER.COOLDOWN", {
-                    time: MiscUtils.timeformat(remaining),
-                }),
-                flags: MessageFlags.Ephemeral,
-            });
-        }
-    }
-
-    // check user permissions
-    if (interaction.member && context.userPermissions && context.userPermissions?.length > 0) {
-        if (!interaction.member.permissions.has(context.userPermissions)) {
-            return interaction.reply({
-                content: guild.getT("core:HANDLER.USER_PERMISSIONS", {
-                    permissions: MiscUtils.parsePermissions(context.userPermissions),
-                }),
-                flags: MessageFlags.Ephemeral,
-            });
-        }
-    }
-
-    try {
-        await interaction.deferReply({ flags: context.ephemeral ? MessageFlags.Ephemeral : 0 });
-        await context.run({ interaction });
-    } catch (ex) {
-        interaction.followUpT("core:HANDLER.ERROR");
-        interaction.client.logger.error("contextRun", ex);
-    } finally {
-        applyCooldown("ctx", interaction.user.id, context);
-    }
-}
-
-/**
- * @param {string} type
- * @param {string} memberId
- * @param {object} cmd
+ * Cooldown utils
  */
 function applyCooldown(type, memberId, cmd) {
     const key = type + "|" + cmd.name + "|" + memberId;
     cooldownCache.set(key, Date.now());
 }
 
-/**
- * @param {string} type
- * @param {string} memberId
- * @param {object} cmd
- */
 function getRemainingCooldown(type, memberId, cmd) {
     const key = type + "|" + cmd.name + "|" + memberId;
     if (cooldownCache.has(key)) {
-        const remaining = (Date.now() - cooldownCache.get(key)) * 0.001;
-        if (remaining > cmd.cooldown) {
+        const elapsed = (Date.now() - cooldownCache.get(key)) * 0.001;
+        if (elapsed > cmd.cooldown) {
             cooldownCache.delete(key);
             return 0;
         }
-        return cmd.cooldown - remaining;
+        return cmd.cooldown - elapsed;
     }
     return 0;
 }
@@ -290,7 +185,6 @@ function getRemainingCooldown(type, memberId, cmd) {
 module.exports = {
     handlePrefixCommand,
     handleSlashCommand,
-    getCommandUsage,
-    getSlashUsage,
-    handleContext,
+    applyCooldown,
+    getRemainingCooldown,
 };
