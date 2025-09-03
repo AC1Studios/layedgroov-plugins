@@ -122,6 +122,7 @@ module.exports = {
     },
     slashCommand: {
         enabled: true,
+        global: true, 
         options: Object.keys(messages).map(action => ({
             name: action,
             description: `Express ${action} anime-style`,
