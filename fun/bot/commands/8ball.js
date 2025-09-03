@@ -21,6 +21,7 @@ module.exports = {
   },
   slashCommand: {
     enabled: true,
+    global: true, 
     options: [
       {
         name: "to-ask",
@@ -31,9 +32,7 @@ module.exports = {
     ],
   },
 
-  /**
-   * @param {{ message: Message, args: string[] }} param0
-   */
+  // Message-based command
   async messageRun({ message, args }) {
     if (!Array.isArray(args) || args.length === 0) {
       return message.reply({
@@ -42,8 +41,7 @@ module.exports = {
     }
 
     const question = args.join(" ");
-    const answer = () =>
-      answers[Math.floor(Math.random() * answers.length)];
+    const answer = () => answers[Math.floor(Math.random() * answers.length)];
 
     const createEmbed = () =>
       new EmbedBuilder()
@@ -66,6 +64,12 @@ module.exports = {
         })
         .setTimestamp();
 
+    // DM-safe: if not in a guild, just send embed
+    if (!message.guild) {
+      return message.reply({ embeds: [createEmbed()] });
+    }
+
+    // Guild version with button
     const button = new ButtonBuilder()
       .setCustomId("shake_again")
       .setLabel("🔁 Shake Again")
@@ -78,57 +82,52 @@ module.exports = {
     });
 
     setTimeout(async () => {
-      await thinkingMsg.edit({
-        content: null,
-        embeds: [createEmbed()],
-        components: [row],
-      });
+      try {
+        await thinkingMsg.edit({ content: null, embeds: [createEmbed()], components: [row] });
+      } catch {}
 
-      const collector = thinkingMsg.channel.createMessageComponentCollector({
-        componentType: 2, // Button
-        time: 15000,
-      });
-
-      collector.on("collect", async (btnInteraction) => {
-        if (btnInteraction.user.id !== message.author.id) {
-          return btnInteraction.reply({
-            content: "Only the original asker can shake again!",
-            ephemeral: true,
-          });
-        }
-
-        await btnInteraction.update({
-          embeds: [createEmbed()],
-          components: [row],
+      if (thinkingMsg.channel) {
+        const collector = thinkingMsg.channel.createMessageComponentCollector({
+          componentType: 2, // Button
+          time: 15000,
         });
-      });
 
-      collector.on("end", () => {
-        const disabledRow = new ActionRowBuilder().addComponents(
-          button.setDisabled(true)
-        );
-        thinkingMsg.edit({ components: [disabledRow] });
-      });
+        collector.on("collect", async (btnInteraction) => {
+          if (btnInteraction.user.id !== message.author.id) {
+            return btnInteraction.reply({
+              content: "Only the original asker can shake again!",
+              ephemeral: true,
+            });
+          }
+
+          try {
+            await btnInteraction.update({ embeds: [createEmbed()], components: [row] });
+          } catch {}
+        });
+
+        collector.on("end", () => {
+          try {
+            const disabledRow = new ActionRowBuilder().addComponents(
+              button.setDisabled(true)
+            );
+            thinkingMsg.edit({ components: [disabledRow] }).catch(() => {});
+          } catch {}
+        });
+      }
     }, 2000);
   },
 
-  /**
-   * @param {CommandInteraction} interaction
-   * @param {CommandInteractionOptionResolver} options
-   */
-async interactionRun({ interaction }) {
+  // Slash command
+  async interactionRun({ interaction }) {
     const question = interaction.options.getString("to-ask");
-
-    if (question.length > 2800) {
+    if (!question || question.length > 2800)
       return interaction.followUp({
         content:
-          "😵‍💫 Your question is too long!\nTry asking something shorter.",
+          "😵‍💫 Your question is invalid or too long!\nTry asking something shorter.",
         ephemeral: true,
       });
-    }
 
-    const answer = () =>
-      answers[Math.floor(Math.random() * answers.length)];
+    const answer = () => answers[Math.floor(Math.random() * answers.length)];
 
     const createEmbed = () =>
       new EmbedBuilder()
@@ -138,7 +137,7 @@ async interactionRun({ interaction }) {
           iconURL: interaction.user.displayAvatarURL(),
         })
         .setThumbnail(
-          "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fd/8-Ball_Pool.svg/1024px-8-Ball_Pool.svg.png"
+          "https://upload.wikimedia.org/wikipedia/commons/f/fd/8-Ball_Pool.svg/1024px-8-Ball_Pool.svg.png"
         )
         .addFields(
           { name: "❓ Question", value: `> ${question}` },
@@ -151,6 +150,12 @@ async interactionRun({ interaction }) {
         })
         .setTimestamp();
 
+    // DM-safe: if not in a guild, just send embed
+    if (!interaction.guild) {
+      return interaction.followUp({ embeds: [createEmbed()] });
+    }
+
+    // Guild version with button
     const button = new ButtonBuilder()
       .setCustomId("shake_again")
       .setLabel("🔁 Shake Again")
@@ -158,43 +163,41 @@ async interactionRun({ interaction }) {
 
     const row = new ActionRowBuilder().addComponents(button);
 
-    await interaction.followUp({
+    const replyMsg = await interaction.followUp({
       content: "🎱 Shaking the 8-ball...",
+      fetchReply: true,
     });
 
     setTimeout(async () => {
-      await interaction.editReply({
-        content: null,
-        embeds: [createEmbed()],
-        components: [row],
-      });
+      try {
+        await replyMsg.edit({ content: null, embeds: [createEmbed()], components: [row] });
+      } catch {}
 
-      const collector =
-        interaction.channel.createMessageComponentCollector({
+      if (replyMsg.channel) {
+        const collector = replyMsg.createMessageComponentCollector({
           componentType: 2,
           time: 15000,
         });
 
-      collector.on("collect", async (btnInteraction) => {
-        if (btnInteraction.user.id !== interaction.user.id) {
-          return btnInteraction.reply({
-            content: "Only the original asker can shake again!",
-            ephemeral: true,
-          });
-        }
+        collector.on("collect", async (btnInteraction) => {
+          if (btnInteraction.user.id !== interaction.user.id)
+            return btnInteraction.reply({
+              content: "Only the original asker can shake again!",
+              ephemeral: true,
+            });
 
-        await btnInteraction.update({
-          embeds: [createEmbed()],
-          components: [row],
+          try {
+            await btnInteraction.update({ embeds: [createEmbed()], components: [row] });
+          } catch {}
         });
-      });
 
-      collector.on("end", () => {
-        const disabledRow = new ActionRowBuilder().addComponents(
-          button.setDisabled(true)
-        );
-        interaction.editReply({ components: [disabledRow] });
-      });
+        collector.on("end", () => {
+          try {
+            const disabledRow = new ActionRowBuilder().addComponents(button.setDisabled(true));
+            replyMsg.edit({ components: [disabledRow] }).catch(() => {});
+          } catch {}
+        });
+      }
     }, 2000);
   },
 };
