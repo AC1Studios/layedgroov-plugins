@@ -19,6 +19,7 @@ module.exports = {
     },
     slashCommand: {
         enabled: true,
+        global: true,
         options: [
             {
                 name: "name",
@@ -43,7 +44,18 @@ module.exports = {
 
     async interactionRun({ interaction }) {
         const choice = interaction.options.getString("name");
-        const response = await getAnimal(interaction.guild, interaction.user, choice);
+
+        // DM-safe: fallback if guild is null
+        const guild = interaction.guild || {
+            getT: (key, vars) => {
+                // fallback translations for DMs
+                if (key === "REQUESTED_BY") return `Requested by ${vars.user}`;
+                if (key === "API_ERROR") return "An API error occurred. Please try again.";
+                return key;
+            },
+        };
+
+        const response = await getAnimal(guild, interaction.user, choice);
         await interaction.followUp(response);
     },
 };
